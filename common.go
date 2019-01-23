@@ -10,6 +10,7 @@ const (
 	commandCodeWisper		= "CX20002"
 	commandCodeStatus       = "CX30001"
 	commandCodeUserList     = "CX30002"
+	commandCodeHelp			= "CI10001"
 
 	chatCommandLogout   = "logout"
 	chatCommandSay      = "say"
