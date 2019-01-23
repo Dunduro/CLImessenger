@@ -62,14 +62,11 @@ func (manager *ClientManager) receive(client *Client) {
 			if err != nil {
 				log.Println("error while receiving data: ", err)
 			}
-			log.Println("Command:", c.Command)
-			log.Println("Payload:", c.Payload)
 			switch c.Command {
 			case commandCodeLogin:
 				client.handle = c.Payload
 				client.data <- []byte("Succesfully logged in as: " + client.handle)
 				serverLog("", "user succesfully logged in '"+client.handle+"'")
-				log.Println(client)
 				for connection := range manager.clients {
 					if client != connection{
 						connection.data <- serverResponse("", "user logged in '"+client.handle+"'")
@@ -82,6 +79,16 @@ func (manager *ClientManager) receive(client *Client) {
 				manager.broadcast <- serverResponse("", "server: user logged out '"+client.handle+"'")
 			case commandCodeSay:
 				manager.broadcast <- serverResponse(client.handle, c.Payload)
+			case commandCodeUserList:
+				var userList string
+				for connection := range manager.clients {
+					if client != connection{
+						userList += "\n *  "+connection.handle
+					}else{
+						userList += "\n -> "+connection.handle
+					}
+				}
+				client.data <- serverResponse("",userList)
 			}
 		}
 	}

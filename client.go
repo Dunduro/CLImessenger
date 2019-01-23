@@ -18,11 +18,6 @@ type Client struct {
 	handle string
 }
 
-type Command struct {
-	Command string
-	target  string
-	Payload string
-}
 
 func (client *Client) receive() {
 	for {
@@ -41,12 +36,26 @@ func (client *Client) receive() {
 	}
 }
 
-func sendCommand(connection net.Conn, code string, target string, payload string) {
-	jsonData, _ := json.Marshal(Command{code, target, payload})
-	_, err := connection.Write(jsonData)
+func (client *Client) sendCommand(command *Command){
+	_, err := client.socket.Write(command.encode())
 	if err != nil {
 		fmt.Println("error while sending command: ", err)
 	}
+}
+
+type Command struct {
+	Command string
+	Target  string
+	Payload string
+}
+
+func (command *Command) encode() []byte {
+	jsonData,err := json.Marshal(*command)
+	if err != nil{
+		log.Println("error encoding command",err)
+		log.Println(command)
+	}
+	return jsonData
 }
 
 func startClientMode(userHandle string) {
@@ -64,47 +73,55 @@ func startClientMode(userHandle string) {
 	}
 	client := &Client{socket: connection}
 	go client.receive()
-	sendCommand(connection, commandCodeLogin, "", userHandle)
+	client.sendCommand(&Command{commandCodeLogin, "", userHandle})
 ClientLoop:
 	for {
 		reader := bufio.NewReader(os.Stdin)
 		message, _ := reader.ReadString('\n')
-		command, target, payload, err := clientInput(message)
-		log.Println(command, target, payload)
+		command, err := clientInput(message)
+		log.Println(command)
 		if err == nil {
-			switch command {
-			case chatCommandLogout:
-				sendCommand(connection, commandCodeLogout, "", "")
-				client.socket.Close()
-				log.Println("closed socket")
+			switch command.Command {
+			case commandCodeLogout:
+				client.sendCommand(&command)
 				break ClientLoop
-			case chatCommandSay:
-				if payload != "" {
-					sendCommand(connection, commandCodeSay, "", payload)
-				}
-				break
-			case chatCommandUserList:
-				sendCommand(connection, commandCodeUserList, "", "")
-				break
+			default:
+				client.sendCommand(&command)
 			}
 		} else {
 			fmt.Println("something went wrong with interpreting the text input:", err)
+			break ClientLoop
 		}
 	}
 }
 
-func clientInput(input string) (string, string, string, error) {
+func clientInput(input string) (Command, error) {
 	regex := regexp.MustCompile(`^(?:\/(?P<command>\w+))?(?: +\[(?P<target>\w+)\] +)?(?: *(?P<payload>[^\n]+))?`)
 	if regex.MatchString(input) {
 		res := regex.FindStringSubmatch(input)
-		command := res[1]
-		target := res[2]
-		payload := res[3]
-		if command == "" || command == chatShortCommandSay {
-			command = chatCommandSay
+		var command string
+		switch res[1] {
+		case "": fallthrough
+		case chatShortCommandSay: fallthrough
+		case chatCommandSay:
+			if res[3] == ""{
+				return Command{}, errors.New("empty message")
+			}
+			command = commandCodeSay
+		case chatCommandLogout: command = commandCodeLogout
+		case chatCommandUserList: command = commandCodeUserList
+		case chatShortCommandWisper: fallthrough
+		case chatCommandWisper:
+			if res[3] == ""{
+				return Command{}, errors.New("empty message")
+			}
+			command = commandCodeWisper
+		default:
+			return Command{},errors.New("invalid Command")
 		}
-		return command, target, payload, nil
+
+		return Command{command, res[2], res[3]}, nil
 	} else {
-		return "", "", "", errors.New("no valid match")
+		return Command{}, errors.New("invalid syntax")
 	}
 }
